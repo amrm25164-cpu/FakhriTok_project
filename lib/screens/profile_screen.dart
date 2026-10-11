@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/video_item.dart';
 import '../services/local_store.dart';
+import '../services/backend_api.dart';
+import 'auth_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final List<VideoItem> uploadedVideos;
@@ -35,6 +37,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) setState(() => _username = result);
     }
   }
+  Future<void> _configureServer() async {
+    final controller = TextEditingController(text: await BackendApi.baseUrl());
+    if (!mounted) return;
+    final result = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('عنوان خادم FakhriTok'),
+      content: TextField(controller: controller, keyboardType: TextInputType.url, decoration: const InputDecoration(hintText: 'http://192.168.1.5:8000', helperText: 'على الموبايل استخدم IP الخادم على الشبكة، وليس localhost.')),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('حفظ'))],
+    ));
+    controller.dispose();
+    if (result == null || result.isEmpty) return;
+    await BackendApi.setBaseUrl(result);
+    try {
+      await BackendApi.health();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الاتصال بالخادم بنجاح.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ العنوان، لكن الاتصال فشل: $e')));
+    }
+  }
+
+  Future<void> _account() async {
+    final current = await BackendApi.currentUser();
+    if (!mounted) return;
+    if (current != null) {
+      final action = await showModalBottomSheet<String>(context: context, builder: (ctx) => SafeArea(child: Wrap(children: [
+        ListTile(leading: const Icon(Icons.account_circle), title: Text('@${current['username'] ?? 'user'}'), subtitle: const Text('حساب متصل بالخادم')),
+        ListTile(leading: const Icon(Icons.logout), title: const Text('تسجيل الخروج'), onTap: () => Navigator.pop(ctx, 'logout')),
+      ])));
+      if (action == 'logout') { await BackendApi.logout(); if (mounted) setState(() {}); }
+    } else {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+      if (mounted) setState(() {});
+    }
+  }
+
   @override
   void dispose() { _editController.dispose(); super.dispose(); }
 
@@ -56,6 +92,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ]),
       const SizedBox(height: 20),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(onPressed: widget.onUpload, icon: const Icon(Icons.add), label: const Text('رفع فيديو'))),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
+        ListTile(leading: const Icon(Icons.cloud_outlined), title: const Text('اتصال بالخادم'), subtitle: const Text('إعداد عنوان API لتفعيل البيانات المشتركة'), onTap: _configureServer, trailing: const Icon(Icons.chevron_left)),
+        ListTile(leading: const Icon(Icons.login), title: const Text('الحساب'), subtitle: const Text('تسجيل الدخول أو إنشاء حساب بالخادم'), onTap: _account, trailing: const Icon(Icons.chevron_left)),
+      ])),
       const Padding(padding: EdgeInsets.all(16), child: Text('فيديوهاتي', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
       if (widget.uploadedVideos.isEmpty)
         const Padding(padding: EdgeInsets.all(28), child: Center(child: Text('لم تنشر فيديوهات بعد'))),
