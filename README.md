@@ -1,46 +1,79 @@
-# FakhriTok
+# FakhriTok — Flutter app + Flask backend
 
-Flutter Android short-video app starter with:
-- Full-screen vertical video feed
-- Demo network videos
-- Local video picker and playback
-- Local likes, saved videos, follows, comments, and username preferences
-- Discover search (demo accounts)
-- Arabic RTL interface
-- Share action
+FakhriTok is an Arabic-first short-video application project. It now includes a Flutter client and a Flask API backend that supports real multi-user data when the backend is deployed and configured.
 
-## Important scope
-This workspace is a functional local prototype, not a full public TikTok-scale service. User uploads remain on the device; likes, comments, saved items, and follows are local. Authentication, real cross-user feeds, cloud uploads, DMs, push notifications, moderation, recommendation infrastructure, and a production backend require configuration and deployment.
+## Included in this project
 
-## Requirements
-- Flutter stable SDK compatible with Dart >=3.3
-- Android SDK / build environment
-- Internet for demo network video
+### Flutter client
+- Full-screen vertical video feed and playback.
+- Local demo feed when the backend is unavailable or has no videos.
+- Local video selection and playback.
+- Backend URL configuration in Profile.
+- Registration/login UI connected to the backend API.
+- Video upload to the backend for authenticated users.
+- Server-backed likes, saves, comments, and follows for server videos when logged in.
+- Local likes/comments/saves for demo videos.
+- Search UI and profile/inbox screens.
+- Arabic-first UI and dark theme.
 
-## Run
+### Flask backend (`backend/`)
+- Registration/login with password hashing and signed JWTs.
+- Profiles and profile editing.
+- Video upload and streaming.
+- Paginated public feed.
+- Likes, comments, follows, saves.
+- User search, notifications, reports, and block list.
+- SQLite for development, plus a Dockerfile for deployment.
+
+## Important limits
+
+This is a substantial working project foundation, but it is **not yet a production-equivalent TikTok clone**. It does not include deployed hosting, production-grade recommendation ranking, private messaging, push notifications, video transcoding/CDN, admin moderation dashboard, password reset/email verification, or automated abuse detection. The backend must be deployed and hardened before real public use. The Flutter source has not been compiled in this environment because Flutter SDK is unavailable here, so build success is not claimed.
+
+## Run the backend
+
 ```bash
+cd backend
+python -m venv .venv
+# Windows: .venv\\Scripts\\activate
+# Linux/macOS/Termux: source .venv/bin/activate
+pip install -r requirements.txt
+export FAKHRITOK_SECRET_KEY="replace-with-a-long-random-secret"
+python app.py
+```
+
+Health check: `http://127.0.0.1:8000/api/health`
+
+For a physical Android phone, the API base URL must be the server's LAN IP (for example `http://192.168.1.10:8000`) if both devices share the same Wi-Fi. `localhost` on the phone points to the phone, not another computer. Android emulator default `http://10.0.2.2:8000` points to the host machine.
+
+## Run the Flutter app
+
+Open this folder as a Flutter project in Klencod IDE. If Android scaffolding is missing, run in the project directory:
+
+```bash
+flutter create --platforms=android .
 flutter pub get
 flutter run
 ```
 
+In the app, open **Profile → Connection to server**, enter the backend URL, and save. Then open **Profile → Account** to register or log in. Once signed in, video uploads go to the backend. Without login/server, uploads stay on the device and demo feed remains available.
+
+If Android blocks local HTTP traffic during development, enable cleartext traffic only for development in the Android app manifest. For public deployment, use HTTPS instead.
+
 ## Build APK
+
 ```bash
+flutter pub get
+flutter analyze
 flutter build apk --release
 ```
-Expected output:
-`build/app/outputs/flutter-apk/app-release.apk`
 
-## Android permissions
-`image_picker` uses Android's system media picker. For older Android versions or custom storage flows, check plugin documentation and Android configuration.
+Expected APK path: `build/app/outputs/flutter-apk/app-release.apk`.
 
-## Firebase integration
-Firebase dependencies are included but not initialized in this starter. To enable real multi-user accounts and cloud uploads:
-1. Create a Firebase project.
-2. Configure Android app package `com.fakhri.football` (change package ID to `com.fakhri.fakhritok` if desired and keep it consistent).
-3. Run FlutterFire CLI configuration to generate `firebase_options.dart`.
-4. Initialize Firebase in `main.dart` using `DefaultFirebaseOptions.currentPlatform`.
-5. Implement authentication, Firestore repositories, Storage uploads, security rules, moderation, and notifications.
-6. Never publish permissive Firestore/Storage rules or service account keys.
+## Production requirements before public launch
 
-## Demo content
-The demo video URLs are public Flutter documentation sample media and are not football clips. Replace them only with media you have permission to use.
+- Deploy backend behind HTTPS and set a strong secret using your host's secret manager.
+- Replace SQLite/local disk storage with PostgreSQL and object storage/CDN for public scale.
+- Add rate limiting, upload quotas, media scanning, moderation tooling, backups, deletion/privacy workflows, email verification and password recovery.
+- Implement push notification delivery and private messaging if needed.
+- Configure and test Android network security and media permissions.
+- Do not expose database files, server secrets, or development credentials.
