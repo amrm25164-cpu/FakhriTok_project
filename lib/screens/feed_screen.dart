@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/video_item.dart';
 import '../services/local_store.dart';
+import '../services/backend_api.dart';
 
 const demoVideos = <VideoItem>[
   VideoItem(id: 'demo1', username: 'football_daily', caption: 'أجمل لحظات كرة القدم ⚽ #football #fyp', videoUrl: 'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4', avatarUrl: '', likes: 12800, comments: 352, shares: 81),
@@ -28,6 +29,7 @@ class _FeedScreenState extends State<FeedScreen> {
     super.initState();
     _videos = [...widget.uploadedVideos, ...demoVideos];
     _loadState();
+    _loadRealFeed();
   }
 
   @override
@@ -35,6 +37,28 @@ class _FeedScreenState extends State<FeedScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.uploadedVideos.length != widget.uploadedVideos.length) {
       setState(() => _videos = [...widget.uploadedVideos, ...demoVideos]);
+    }
+  }
+
+
+  Future<void> _loadRealFeed() async {
+    try {
+      final rows = await BackendApi.feed(limit: 20);
+      if (!mounted || rows.isEmpty) return;
+      final real = rows.map((row) => VideoItem(
+        id: row['id']?.toString() ?? '',
+        userId: row['userId']?.toString(),
+        username: row['username']?.toString() ?? 'user',
+        caption: row['caption']?.toString() ?? '',
+        videoUrl: row['videoUrl']?.toString() ?? '',
+        avatarUrl: row['avatarUrl']?.toString() ?? '',
+        likes: (row['likes'] as num?)?.toInt() ?? 0,
+        comments: (row['comments'] as num?)?.toInt() ?? 0,
+        isDemo: false,
+      )).where((v) => v.id.isNotEmpty && v.videoUrl.isNotEmpty).toList();
+      if (real.isNotEmpty && mounted) setState(() => _videos = [...widget.uploadedVideos, ...real]);
+    } catch (_) {
+      // Keep clearly labeled demo feed if the backend is not configured/reachable.
     }
   }
 
@@ -46,10 +70,26 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> _toggleLike(VideoItem v) async {
+    final token = await BackendApi.token();
+    if (!v.isDemo && token != null) {
+      try {
+        final result = await BackendApi.toggleLike(v.id);
+        final liked = result['liked'] == true;
+        setState(() {
+          if (liked) { _liked.add(v.id); } else { _liked.remove(v.id); }
+          _videos = _videos.map((x) => x.id == v.id ? x.copyWith(likes: (result['likes'] as num?)?.toInt() ?? x.likes) : x).toList();
+        });
+        await LocalStore.saveLiked(_liked);
+        return;
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تسجيل الإعجاب على الخادم: $e')));
+        return;
+      }
+    }
     setState(() {
       if (_liked.contains(v.id)) {
         _liked.remove(v.id);
-        _videos = _videos.map((x) => x.id == v.id ? x.copyWith(likes: (x.likes - 1).clamp(0, 1 << 30)) : x).toList();
+        _videos = _videos.map((x) => x.id == v.id ? x.copyWith(likes: (x.likes - 1).clamp(0, 1 << 30).toInt()) : x).toList();
       } else {
         _liked.add(v.id);
         _videos = _videos.map((x) => x.id == v.id ? x.copyWith(likes: x.likes + 1) : x).toList();
@@ -59,18 +99,47 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> _toggleSave(VideoItem v) async {
-    setState(() {
-      if (!_saved.add(v.id)) _saved.remove(v.id);
-    });
+    final token = await BackendApi.token();
+    if (!v.isDemo && token != null) {
+      try {
+        final result = await BackendApi.toggleSave(v.id);
+        setState(() { if (result['saved'] == true) { _saved.add(v.id); } else { _saved.remove(v.id); } });
+        await LocalStore.saveSaved(_saved);
+        return;
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الفيديو على الخادم: $e')));
+        return;
+      }
+    }
+    setState(() { if (!_saved.add(v.id)) _saved.remove(v.id); });
     await LocalStore.saveSaved(_saved);
   }
 
   Future<void> _toggleFollow(VideoItem v) async {
-    setState(() {
-      if (!_followed.add(v.username)) _followed.remove(v.username);
-    });
+    final token = await BackendApi.token();
+    if (!v.isDemo && token != null && v.userId != null) {
+      try {
+        final result = await BackendApi.follow(v.userId!);
+        setState(() { if (result['following'] == true) { _followed.add(v.username); } else { _followed.remove(v.username); } });
+        await LocalStore.saveFollowed(_followed);
+        return;
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحديث المتابعة: $e')));
+        return;
+      }
+    }
+    setState(() { if (!_followed.add(v.username)) _followed.remove(v.username); });
     await LocalStore.saveFollowed(_followed);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_followed.contains(v.username) ? 'تمت متابعة @${v.username}' : 'تم إلغاء متابعة @${v.username}')));
+  }
+
+  Future<List<String>> _commentsFor(VideoItem video) async {
+    final token = await BackendApi.token();
+    if (!video.isDemo && token != null) {
+      final rows = await BackendApi.comments(video.id);
+      return rows.map((r) => '@${r['username']}: ${r['body']}').toList();
+    }
+    return LocalStore.comments(video.id);
   }
 
   void _comments(VideoItem video) {
@@ -85,7 +154,7 @@ class _FeedScreenState extends State<FeedScreen> {
             const Padding(padding: EdgeInsets.all(16), child: Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
             const Divider(height: 1),
             Expanded(child: FutureBuilder<List<String>>(
-              future: LocalStore.comments(video.id),
+              future: _commentsFor(video),
               builder: (ctx, snap) {
                 final comments = snap.data ?? [];
                 if (comments.isEmpty) return const Center(child: Text('لا توجد تعليقات بعد'));
@@ -99,7 +168,15 @@ class _FeedScreenState extends State<FeedScreen> {
                 IconButton(icon: const Icon(Icons.send, color: Color(0xFF25F4EE)), onPressed: () async {
                   final text = controller.text.trim();
                   if (text.isEmpty) return;
-                  await LocalStore.addComment(video.id, text);
+                  final token = await BackendApi.token();
+                  if (!video.isDemo && token != null) {
+                    try { await BackendApi.addComment(video.id, text); } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال التعليق: $e')));
+                      return;
+                    }
+                  } else {
+                    await LocalStore.addComment(video.id, text);
+                  }
                   controller.clear();
                   if (ctx.mounted) { Navigator.pop(ctx); _comments(video); }
                 }),
