@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/video_item.dart';
 import '../services/local_store.dart';
+import '../services/backend_api.dart';
 import 'feed_screen.dart';
 import 'discover_screen.dart';
 import 'inbox_screen.dart';
@@ -41,6 +42,32 @@ class _AppShellState extends State<AppShell> {
     captionController.dispose();
     if (caption == null || !mounted) return;
     final username = await LocalStore.username();
+    final token = await BackendApi.token();
+    if (token != null) {
+      try {
+        final uploaded = await BackendApi.uploadVideo(filePath: file.path, caption: caption);
+        setState(() {
+          _uploads.insert(0, VideoItem(
+            id: uploaded['id']?.toString() ?? 'upload_${DateTime.now().microsecondsSinceEpoch}',
+            userId: uploaded['userId']?.toString(),
+            username: uploaded['username']?.toString() ?? username,
+            caption: uploaded['caption']?.toString() ?? caption,
+            videoUrl: uploaded['videoUrl']?.toString() ?? '',
+            avatarUrl: uploaded['avatarUrl']?.toString() ?? '',
+            likes: (uploaded['likes'] as num?)?.toInt() ?? 0,
+            comments: (uploaded['comments'] as num?)?.toInt() ?? 0,
+            isDemo: false,
+          ));
+          _tab = 0;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع الفيديو إلى الخادم.')));
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل رفع الفيديو إلى الخادم: $e')));
+        return;
+      }
+    }
     setState(() {
       _uploads.insert(0, VideoItem(
         id: 'upload_${DateTime.now().microsecondsSinceEpoch}',
@@ -54,7 +81,7 @@ class _AppShellState extends State<AppShell> {
       _tab = 0;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تمت إضافة الفيديو لهذا الجهاز فقط. النشر للآخرين يحتاج إعداد خادم.')),
+      const SnackBar(content: Text('تمت إضافة الفيديو لهذا الجهاز فقط. سجّل الدخول واربط الخادم للنشر للآخرين.')),
     );
   }
 
