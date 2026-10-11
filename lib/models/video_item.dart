@@ -1,5 +1,6 @@
 class VideoItem {
   final String id;
+  final String? userId;
   final String username;
   final String caption;
   final String videoUrl;
@@ -12,6 +13,7 @@ class VideoItem {
 
   const VideoItem({
     required this.id,
+    this.userId,
     required this.username,
     required this.caption,
     required this.videoUrl,
@@ -24,7 +26,7 @@ class VideoItem {
   });
 
   VideoItem copyWith({int? likes, int? comments, int? shares}) => VideoItem(
-    id: id, username: username, caption: caption, videoUrl: videoUrl,
+    id: id, userId: userId, username: username, caption: caption, videoUrl: videoUrl,
     avatarUrl: avatarUrl, localPath: localPath, likes: likes ?? this.likes,
     comments: comments ?? this.comments, shares: shares ?? this.shares,
     isDemo: isDemo,
